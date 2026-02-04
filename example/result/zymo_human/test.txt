@@ -19,4 +19,4 @@ Load positive test data from example/zymo/test.npy, shape: (500,)
 accepted pos reads: 500, rejected pos reads: 0, TP: 470, FN: 30
 Load negative test data from example/human/test.npy, shape: (500,)
 accepted neg reads: 500, rejected neg reads: 0, TN: 475, FP: 25
-accuracy: 94.5, precision: 94.95, recall: 94.0, f1_score: 94.47, average inference time: 0.8427
+accuracy: 94.5, precision: 94.95, recall: 94.0, f1_score: 94.47, average inference time: 0.7566

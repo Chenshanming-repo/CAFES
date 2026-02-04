@@ -21,7 +21,7 @@ from tester import test
 # from models.CNN_LSTM import CNN_LSTM
 # from models.Transformer import Transformer
 # from models.CNN_Transformer import CNN_Transformer
-from util import memory_report
+# from util import memory_report
 
 
 def myprint(string, log):
