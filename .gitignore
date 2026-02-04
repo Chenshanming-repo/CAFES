@@ -1,0 +1,4 @@
+script/
+example/result/zymo_human/model.pth
+__pycache__/
+*.pyc

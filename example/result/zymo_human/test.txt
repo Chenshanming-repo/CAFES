@@ -1,0 +1,22 @@
+pos_data_folder: example/zymo/
+neg_data_folder: example/human/
+model_state: example/result/zymo_human/model.pth
+output: example/result/zymo_human/
+batch_size: 512
+cut: 1500
+length: 3000
+patches: False
+seq_length: 299
+stride: 10
+patch_size: 16
+gpu_ids: 0
+dropout: 0.2
+SEBlock: True
+norm: True
+test in cuda 0
+Load model state from example/result/zymo_human/model.pth
+Load positive test data from example/zymo/test.npy, shape: (500,)
+accepted pos reads: 500, rejected pos reads: 0, TP: 470, FN: 30
+Load negative test data from example/human/test.npy, shape: (500,)
+accepted neg reads: 500, rejected neg reads: 0, TN: 475, FP: 25
+accuracy: 94.5, precision: 94.95, recall: 94.0, f1_score: 94.47, average inference time: 0.8427
