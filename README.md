@@ -16,7 +16,6 @@ snakemake=7.32.4
 ont-fast5-api=4.1.1
 minimap2=2.17
 samtools=1.16.1
-read_until_api=3.4.1
 ```
 
 ### Install CAFES by Conda
@@ -28,17 +27,9 @@ read_until_api=3.4.1
 #### 3. Create Conda virtual environment for CAFES
 
 ```shell
-conda env create -f environment.yaml
+conda env create -f environment.yml
 ```
 
-#### 4. [Install read_until_api](https://github.com/nanoporetech/read_until_api) (optional, only required for nanopore selective sequencing experiments)
-
-```shell
-# Install from github:
-pip install git+https://github.com/nanoporetech/read_until_api@master
-# Or from a local clone
-python setup.py install
-```
 
 ## Quick Start
 
@@ -115,22 +106,3 @@ Perform data preprocessing on training and validation sets from the dataset fold
 ```shell
 python preprocessor.py -d {dataset_folder}
 ```
-
-### ReadCurrent_adaptive.py
-
-Nanopore selective sequencing using CAFES (formerly ReadCurrent).
-
-```shell
-python read_until_api-3.4.1/read_until/ReadCurrent_adaptive.py --run_time 7200 --model_state {model_state_path} --output {output_path} --gpu_ids 0
-```
-
-## Reference
-
-1. Bao Y, Wadden J, Erb-Downward JR. et al.  SquiggleNet: real-time, direct classification of nanopore signals. Genome Biol 2021;22:298. https://doi.org/10.1186/s13059-021-02511-y.
-2. Danilevsky A, Polsky AL, Shomron N. Adaptive sequencing using nanopores and deep learning of mitochondrial DNA. Brief Bioinform 2022;23:bbac251. https://doi.org/10.1093/bib/bbac251.
-3. Senanayake A, Gamaarachchi H, Herath D. et al.  DeepSelectNet: deep neural network based selective sequencing for oxford nanopore sequencing. BMC Bioinformatics 2023;24:31. https://doi.org/10.1186/s12859-023-05151-0.
-4. Lin Y, Zhang Y, Sun H. et al.  NanoDeep: a deep learning framework for nanopore adaptive sampling on microbial sequencing. Brief Bioinform 2023;25:bbad499. https://doi.org/10.1093/bib/bbad499.
-
-## License
-
-[MIT](LICENSE)
