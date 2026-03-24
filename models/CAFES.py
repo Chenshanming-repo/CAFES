@@ -90,17 +90,17 @@ class SEBlock(nn.Module):
 
 
 class CAFES(nn.Module):
-    def __init__(self, n_conv_neurons, n_fc_neurons=1024, depth=9, n_classes=2, shortcut=False, dropout_rate=0, use_SEBlock=False):
+    def __init__(self, n_conv_neurons, n_fc_neurons=1024, depth=9, n_classes=2, shortcut=False, dropout_rate=0, use_SEBlock=False, n_input_channels=6):
         super(CAFES, self).__init__()
 
         layers = []
         fc_layers = []
-        
+
         self.dropout_rate = dropout_rate
         self.use_SEBlock = use_SEBlock
 
-        layers.append(nn.BatchNorm1d(6))
-        layers.append(nn.Conv1d(6, n_conv_neurons[0], kernel_size=19, padding=5, stride=3))
+        layers.append(nn.BatchNorm1d(n_input_channels))
+        layers.append(nn.Conv1d(n_input_channels, n_conv_neurons[0], kernel_size=19, padding=5, stride=3))
         layers.append(nn.BatchNorm1d(n_conv_neurons[0]))
         layers.append(nn.ReLU())
         layers.append(nn.MaxPool1d(2, padding=1, stride=2))
