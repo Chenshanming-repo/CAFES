@@ -2,3 +2,7 @@ script/
 example/result/zymo_human/model.pth
 __pycache__/
 *.pyc
+paper/
+ablation/
+figures/
+PAPER_PLAN.md
