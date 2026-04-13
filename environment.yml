@@ -1,4 +1,4 @@
-name: readcurrent-env
+name: CAFES-env
 channels:
   - pytorch
   - bioconda
