@@ -286,4 +286,4 @@ dependencies:
   - zipp=3.23.0=pyhd8ed1ab_0
   - zlib=1.2.13=h4ab18f5_6
   - zstd=1.5.6=ha6fb4c9_0
-prefix: /public/home/hpc224712204/miniconda3/envs/readcurrent-env
+prefix: /public/home/hpc224712204/miniconda3/envs/CAFES-env
