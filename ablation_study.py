@@ -9,7 +9,9 @@ Evaluates the contribution of three key components:
 Usage
 -----
   python ablation_study.py \
-      -p <pos_data_folder> -n <neg_data_folder> -o <output_dir> \
+      --train_pos_data_folder <train_pos_dir> --train_neg_data_folder <train_neg_dir> \
+      --test_pos_data_folder <test_pos_dir> --test_neg_data_folder <test_neg_dir> \
+      -o <output_dir> \
       [--gpu_ids 0] [--experiments baseline_full feat_raw_only ...]
 
 Outputs
@@ -46,6 +48,11 @@ CHANNEL_NAMES = ["raw", "diff", "w_mean", "w_std", "t_stat", "z_score"]
 
 # ── Channel-selection utilities ──────────────────────────────────────
 
+def myprint(string, log):
+    log.write(string + '\n')
+    log.flush()
+    print(string)
+
 class ChannelSelectDataset(torch.utils.data.Dataset):
     """Wraps a base dataset and keeps only the requested channels."""
     def __init__(self, base_dataset, channel_indices):
@@ -75,6 +82,22 @@ def get_experiments():
     dropout           – sweep dropout rates
     """
     exps = []
+
+    # ── BN ablation ─────────────────────────────────────────────
+
+    exps.append(dict(
+        name="rc", group="rc",
+        channels=[0],
+        channel_desc="raw signal",
+        use_SEBlock=False, dropout=0, norm=False, use_first_bn=False,
+    ))
+
+    exps.append(dict(
+        name="first_bn_disabled", group="BatchNorm",
+        channels=[0, 1, 2, 3, 4, 5],
+        channel_desc="All 6ch",
+        use_SEBlock=True, dropout=0.2, norm=True, use_first_bn=False,
+    ))
 
     # ── Baseline (shared) ────────────────────────────────────────────
     exps.append(dict(
@@ -121,8 +144,10 @@ def get_experiments():
         name="se_disabled",         group="SEBlock",
         channels=[0, 1, 2, 3, 4, 5],
         channel_desc="All 6ch",
-        use_SEBlock=False, dropout=0.2, norm=True,
+        use_SEBlock=False, dropout=0.2, norm=True, use_first_bn=True,
     ))
+
+
 
     # ── Dropout ablation ─────────────────────────────────────────────
     for dr in [0.0, 0.1, 0.3, 0.5]:
@@ -141,7 +166,7 @@ def get_experiments():
 def train_model(model, pos_loader, neg_loader,
                 pos_val_loader, neg_val_loader,
                 out_dir, device,
-                lr=1e-3, epochs=300, tolerance=10):
+                lr=1e-3, epochs=300, tolerance=10, log_fh=None):
     """Train *model* and return (best_val_acc, best_val_loss, time_s, early)."""
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -186,6 +211,18 @@ def train_model(model, pos_loader, neg_loader,
                 avg_train_acc = round(acc_buf * 2, 2)
                 avg_train_loss = round(loss_buf / 50, 4)
                 acc_buf, loss_buf = 0.0, 0.0
+                
+                if log_fh:
+                    current_lr = optimizer.param_groups[0]['lr']
+                    post_fix = {
+                        "pos epoch": pos_epoch,
+                        "iter": step,
+                        "avg_loss": avg_train_loss,
+                        "avg_acc": avg_train_acc,
+                        "lr": current_lr
+                    }
+                    print(str(post_fix), file=log_fh)
+                    log_fh.flush()
 
             # ── Validation every 200 steps ───────────────────────────
             if step % 200 == 0:
@@ -217,6 +254,16 @@ def train_model(model, pos_loader, neg_loader,
                         torch.save(model.state_dict(),
                                    os.path.join(out_dir, "model.pth"))
 
+                    if log_fh:
+                        post_fix = {
+                            "valid_loss": avg_v_loss,
+                            "valid_acc": avg_v_acc,
+                            "best_loss": best_loss,
+                            "best_acc": best_acc,
+                        }
+                        print(str(post_fix), file=log_fh)
+                        log_fh.flush()
+
                     if patience >= tolerance and sched_num < 4:
                         model.load_state_dict(
                             torch.load(os.path.join(out_dir, "model.pth")))
@@ -234,18 +281,21 @@ def train_model(model, pos_loader, neg_loader,
 # ── Testing ──────────────────────────────────────────────────────────
 
 def test_model(model, pos_reads, neg_reads, batch_size,
-               cut, length, channel_indices, device, norm):
+               cut, length, channel_indices, device, norm, log_fh=None):
     """Evaluate on test set. Returns dict of metrics."""
     model.eval()
 
     def _eval_class(reads, label):
         tp, fp, bc = 0, 0, 0
+        accepted, rejected = 0, 0
         buf = []
         with torch.no_grad():
             t0 = time.time()
             for rd in reads:
                 if len(rd) < cut + length:
+                    rejected += 1
                     continue
+                accepted += 1
                 buf.append(rd[cut:cut + length])
                 if len(buf) >= batch_size:
                     bc += 1
@@ -263,10 +313,16 @@ def test_model(model, pos_reads, neg_reads, batch_size,
                 tp += (pred == label).sum().item()
                 fp += (pred != label).sum().item()
             elapsed = time.time() - t0
-        return tp, fp, elapsed / max(bc, 1)
+        return tp, fp, elapsed / max(bc, 1), accepted, rejected
 
-    tp, fn, pt = _eval_class(pos_reads, 1)
-    tn, fp, nt = _eval_class(neg_reads, 0)
+    tp, fn, pt, pos_acc, pos_rej = _eval_class(pos_reads, 1)
+    tn, fp, nt, neg_acc, neg_rej = _eval_class(neg_reads, 0)
+    
+    if log_fh:
+        myprint('accepted pos reads: {}, rejected pos reads: {}, TP: {}, FN: {}'.format(
+            pos_acc, pos_rej, tp, fn), log_fh)
+        myprint('accepted neg reads: {}, rejected neg reads: {}, TN: {}, FP: {}'.format(
+            neg_acc, neg_rej, tn, fp), log_fh)
 
     total = tp + tn + fp + fn
     acc  = round((tp + tn) * 100 / total, 2) if total else 0
@@ -319,7 +375,7 @@ def plot_ablation(results, output_dir):
 
 def print_summary(results, fh):
     """Print a formatted table to stdout and *fh*."""
-    hdr = (f"{'Experiment':<25} {'Ch':<5} {'SE':<6} {'Drop':<6} "
+    hdr = (f"{'Experiment':<25} {'Ch':<5} {'SE':<6} {'1stBN':<6} {'Drop':<6} "
            f"{'Acc%':<8} {'Prec%':<8} {'Rec%':<8} {'F1%':<8} "
            f"{'InferT':<10} {'TrainT':<10}")
     sep = "-" * len(hdr)
@@ -327,7 +383,7 @@ def print_summary(results, fh):
         print(line); fh.write(line + "\n")
     for r in results:
         line = (f"{r['name']:<25} {len(r['channels']):<5} "
-                f"{str(r['use_SEBlock']):<6} {r['dropout']:<6.1f} "
+                f"{str(r['use_SEBlock']):<6} {str(r.get('use_first_bn', True)):<6} {r['dropout']:<6.1f} "
                 f"{r.get('accuracy','-'):<8} {r.get('precision','-'):<8} "
                 f"{r.get('recall','-'):<8} {r.get('f1_score','-'):<8} "
                 f"{r.get('avg_infer_time','-'):<10} "
@@ -342,6 +398,9 @@ def run_experiment(exp, args, device):
     """Train + test one ablation configuration. Returns updated *exp*."""
     exp_dir = os.path.join(args.output, exp["name"])
     os.makedirs(exp_dir, exist_ok=True)
+    
+    exp_log_path = os.path.join(exp_dir, "train_test_log.txt")
+    exp_log = open(exp_log_path, "w")
 
     ch_idx = exp["channels"]
     n_ch = len(ch_idx)
@@ -350,7 +409,8 @@ def run_experiment(exp, args, device):
     model = CAFES([32, 64, 128, 256, 512], n_fc_neurons=2048, depth=29,
                   shortcut=True, dropout_rate=exp["dropout"],
                   use_SEBlock=exp["use_SEBlock"],
-                  n_input_channels=n_ch)
+                  n_input_channels=n_ch,
+                  use_first_bn=exp.get("use_first_bn", True))
     model = nn.DataParallel(model).to(device)
 
     # Data loaders
@@ -358,15 +418,15 @@ def run_experiment(exp, args, device):
                  pin_memory=True, num_workers=args.num_workers)
 
     pos_train = ChannelSelectDataset(
-        LazyTrainDataset(os.path.join(args.pos_data_folder, "train.npy"),
+        LazyTrainDataset(os.path.join(args.train_pos_data_folder, "train.npy"),
                          data_type="pos", norm=exp["norm"]), ch_idx)
     neg_train = ChannelSelectDataset(
-        LazyTrainDataset(os.path.join(args.neg_data_folder, "train.npy"),
+        LazyTrainDataset(os.path.join(args.train_neg_data_folder, "train.npy"),
                          data_type="neg", norm=exp["norm"]), ch_idx)
 
-    pos_val_raw = np.load(os.path.join(args.pos_data_folder, "valid.npy"),
+    pos_val_raw = np.load(os.path.join(args.train_pos_data_folder, "valid.npy"),
                           allow_pickle=True)
-    neg_val_raw = np.load(os.path.join(args.neg_data_folder, "valid.npy"),
+    neg_val_raw = np.load(os.path.join(args.train_neg_data_folder, "valid.npy"),
                           allow_pickle=True)
     pos_val = select_channels(add_features(
         valid_non_normalization(pos_val_raw, args.cut, args.length,
@@ -382,29 +442,44 @@ def run_experiment(exp, args, device):
     pos_val_loader = DataLoader(Dataset(pos_val, "pos"), **dl_kw)
     neg_val_loader = DataLoader(Dataset(neg_val, "neg"), **dl_kw)
 
+    model_path = os.path.join(exp_dir, "model.pth")
+
     # Train
-    print(f"  Training {exp['name']} ...")
-    best_acc, best_loss, train_s, early = train_model(
-        model, pos_train_loader, neg_train_loader,
-        pos_val_loader, neg_val_loader,
-        exp_dir, device,
-        lr=args.learning_rate, epochs=args.epochs,
-        tolerance=args.tolerance)
+    if os.path.exists(model_path):
+        print(f"  [Skip] Checkpoint found. Skipping training for {exp['name']}...")
+        # 如果跳过训练，为了防止后续给 exp 字典赋值时报错，需要预设一些默认或占位指标
+        best_acc = "Skipped"
+        best_loss = "Skipped"
+        train_s = 0.0
+        early = False
+    else:
+        print(f"  Training {exp['name']} ...")
+        # 你的正常训练代码
+        best_acc, best_loss, train_s, early = train_model(
+            model, pos_train_loader, neg_train_loader,
+            pos_val_loader, neg_val_loader,
+            exp_dir, device,
+            lr=args.learning_rate, epochs=args.epochs,
+            tolerance=args.tolerance
+        )
 
     # Test
-    model.load_state_dict(torch.load(os.path.join(exp_dir, "model.pth")))
-    pos_test = np.load(os.path.join(args.pos_data_folder, "test.npy"),
+    myprint(f"--- Testing {exp['name']} ---", exp_log)
+    model.load_state_dict(torch.load(model_path))
+    pos_test = np.load(os.path.join(args.test_pos_data_folder, "test.npy"),
                        allow_pickle=True)
-    neg_test = np.load(os.path.join(args.neg_data_folder, "test.npy"),
+    neg_test = np.load(os.path.join(args.test_neg_data_folder, "test.npy"),
                        allow_pickle=True)
     metrics = test_model(model, pos_test, neg_test, args.batch_size,
-                         args.cut, args.length, ch_idx, device, exp["norm"])
+                         args.cut, args.length, ch_idx, device, exp["norm"], log_fh=exp_log)
 
     exp.update(metrics)
     exp["train_time"] = round(train_s, 2)
     exp["early_stop"] = early
     exp["best_val_acc"] = best_acc
     exp["best_val_loss"] = best_loss
+    
+    exp_log.close()
     return exp
 
 
@@ -414,10 +489,14 @@ if __name__ == "__main__":
     torch.manual_seed(3407)
 
     ap = argparse.ArgumentParser(description="CAFES Ablation Study")
-    ap.add_argument("--pos_data_folder", "-p", type=str, required=True,
-                    help="Positive dataset folder (train/valid/test .npy)")
-    ap.add_argument("--neg_data_folder", "-n", type=str, required=True,
-                    help="Negative dataset folder (train/valid/test .npy)")
+    ap.add_argument("--train_pos_data_folder", "-trp", type=str, required=True,
+                    help="Training positive dataset folder (train/valid .npy)")
+    ap.add_argument("--train_neg_data_folder", "-trn", type=str, required=True,
+                    help="Training negative dataset folder (train/valid .npy)")
+    ap.add_argument("--test_pos_data_folder", "-tep", type=str, required=True,
+                    help="Testing positive dataset folder (test .npy)")
+    ap.add_argument("--test_neg_data_folder", "-ten", type=str, required=True,
+                    help="Testing negative dataset folder (test .npy)")
     ap.add_argument("--output", "-o", type=str, required=True,
                     help="Root output directory for all experiments")
     ap.add_argument("--cut", "-c", type=int, default=1500)
@@ -466,7 +545,7 @@ if __name__ == "__main__":
         # Incremental CSV save
         csv_path = os.path.join(args.output, "ablation_results.csv")
         fields = ["name", "group", "channel_desc", "channels",
-                  "use_SEBlock", "dropout", "norm",
+                  "use_SEBlock", "use_first_bn", "dropout", "norm",
                   "accuracy", "precision", "recall", "f1_score",
                   "avg_infer_time", "train_time", "early_stop",
                   "best_val_acc", "best_val_loss",
