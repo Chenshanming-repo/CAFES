@@ -1,6 +1,7 @@
 script/
 example/result/zymo_human/model.pth
 __pycache__/
+.idea/
 *.pyc
 mix_species_expr/
 paper/
