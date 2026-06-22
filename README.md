@@ -35,6 +35,12 @@ Or with explicit options (same as default):
 python trainer.py -p example/zymo/ -n example/human/ -o example/result/zymo_human -g 0 --dropout 0.2 --SEBlock --norm
 ```
 
+Set the feature embedding window size used by rolling mean/std and t-stat channels:
+
+```shell
+python trainer.py -p example/zymo/ -n example/human/ -o example/result/zymo_human -g 0 --feature_window_size 5
+```
+
 ### Test
 
 ```shell
@@ -51,11 +57,12 @@ Train the model on the specified dataset.
 - `--dropout`: 0.2
 - `--SEBlock`: Enabled by default (use `--no-SEBlock` to disable)
 - `--norm`: Enabled by default (use `--no-norm` to disable)
+- `--feature_window_size`: 3, controls rolling mean/std and t-stat feature embedding window size
 
 ```shell
 usage: trainer.py [-h] --pos_data_folder POS_DATA_FOLDER --neg_data_folder NEG_DATA_FOLDER --output OUTPUT [--preprocess] [--cut CUT] [--tiling_fold TILING_FOLD] [--length LENGTH] [--patches]
                   [--seq_length SEQ_LENGTH] [--stride STRIDE] [--patch_size PATCH_SIZE] [--batch_size BATCH_SIZE] [--epochs EPOCHS] [--learning_rate LEARNING_RATE] [--tolerance TOLERANCE] [--interm INTERM]
-                  [--num_workers NUM_WORKERS] [--gpu_ids GPU_IDS] [--dropout DROPOUT] [--SEBlock] [--no-SEBlock] [--norm] [--no-norm]
+                  [--num_workers NUM_WORKERS] [--gpu_ids GPU_IDS] [--dropout DROPOUT] [--SEBlock] [--no-SEBlock] [--norm] [--no-norm] [--feature_window_size FEATURE_WINDOW_SIZE]
 ```
 
 ### tester.py
@@ -66,11 +73,22 @@ Test the model on the specified dataset.
 - `--dropout`: 0.2
 - `--SEBlock`: Enabled by default (use `--no-SEBlock` to disable)
 - `--norm`: Enabled by default (use `--no-norm` to disable)
+- `--feature_window_size`: 3, controls rolling mean/std and t-stat feature embedding window size
 
 ```shell
 usage: tester.py [-h] --pos_data_folder POS_DATA_FOLDER --neg_data_folder NEG_DATA_FOLDER --model_state MODEL_STATE --output OUTPUT [--batch_size BATCH_SIZE] [--cut CUT] [--length LENGTH] [--patches]
-                 [--seq_length SEQ_LENGTH] [--stride STRIDE] [--patch_size PATCH_SIZE] [--gpu_ids GPU_IDS] [--dropout DROPOUT] [--SEBlock] [--no-SEBlock] [--norm] [--no-norm]
+                 [--seq_length SEQ_LENGTH] [--stride STRIDE] [--patch_size PATCH_SIZE] [--gpu_ids GPU_IDS] [--dropout DROPOUT] [--SEBlock] [--no-SEBlock] [--norm] [--no-norm] [--feature_window_size FEATURE_WINDOW_SIZE]
 ```
+
+### ablation_study.py
+
+Run ablation experiments, including optional feature embedding window-size sweeps.
+
+```shell
+python ablation_study.py -trp example/zymo/ -trn example/human/ -tep example/zymo/ -ten example/human/ -o example/result/ablation --window_sizes 3 5 7
+```
+
+- `--window_sizes`: one or more feature embedding window sizes for the ablation sweep, default `3`
 
 ### get_ids.smk
 

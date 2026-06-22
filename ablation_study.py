@@ -41,10 +41,21 @@ from sklearn.utils import shuffle
 
 from models.CAFES import CAFES
 from dataset import Dataset, LazyTrainDataset
-from preprocessor import add_features, valid_non_normalization
+from preprocessor import add_features, valid_non_normalization, feature_window_size_type
 
 # ── Constants ────────────────────────────────────────────────────────
 CHANNEL_NAMES = ["raw", "diff", "w_mean", "w_std", "t_stat", "z_score"]
+DEFAULT_FEATURE_WINDOW_SIZE = 3
+
+
+def unique_window_sizes(window_sizes):
+    if window_sizes is None:
+        return [DEFAULT_FEATURE_WINDOW_SIZE]
+    unique = []
+    for w_len in window_sizes:
+        if w_len not in unique:
+            unique.append(w_len)
+    return unique
 
 # ── Channel-selection utilities ──────────────────────────────────────
 
@@ -71,7 +82,7 @@ def select_channels(tensor, channel_indices):
 
 # ── Experiment definitions ───────────────────────────────────────────
 
-def get_experiments():
+def get_experiments(window_sizes=None):
     """Return the full list of ablation configurations.
 
     Groups
@@ -156,6 +167,21 @@ def get_experiments():
             channels=[0, 1, 2, 3, 4, 5],
             channel_desc="All 6ch",
             use_SEBlock=True, dropout=dr, norm=True,
+        ))
+
+    for exp in exps:
+        exp.setdefault("feature_window_size", DEFAULT_FEATURE_WINDOW_SIZE)
+
+    for w_len in unique_window_sizes(window_sizes):
+        if w_len == DEFAULT_FEATURE_WINDOW_SIZE:
+            continue
+        exps.append(dict(
+            name=f"window_size_{w_len}", group="feature_window_size",
+            channels=[0, 1, 2, 3, 4, 5],
+            channel_desc=f"All 6ch, window={w_len}",
+            use_SEBlock=True, dropout=0.2, norm=True,
+            use_first_bn=True,
+            feature_window_size=w_len,
         ))
 
     return exps
@@ -281,7 +307,8 @@ def train_model(model, pos_loader, neg_loader,
 # ── Testing ──────────────────────────────────────────────────────────
 
 def test_model(model, pos_reads, neg_reads, batch_size,
-               cut, length, channel_indices, device, norm, log_fh=None):
+               cut, length, channel_indices, device, norm,
+               feature_window_size=DEFAULT_FEATURE_WINDOW_SIZE, log_fh=None):
     """Evaluate on test set. Returns dict of metrics."""
     model.eval()
 
@@ -300,7 +327,9 @@ def test_model(model, pos_reads, neg_reads, batch_size,
                 if len(buf) >= batch_size:
                     bc += 1
                     feat = select_channels(
-                        add_features(buf, norm=norm), channel_indices)
+                        add_features(buf, norm=norm, s_len=length,
+                                     w_len=feature_window_size),
+                        channel_indices)
                     pred = model(feat.float().to(device)).max(1).indices
                     tp += (pred == label).sum().item()
                     fp += (pred != label).sum().item()
@@ -308,7 +337,9 @@ def test_model(model, pos_reads, neg_reads, batch_size,
             if buf:
                 bc += 1
                 feat = select_channels(
-                    add_features(buf, norm=norm), channel_indices)
+                    add_features(buf, norm=norm, s_len=length,
+                                 w_len=feature_window_size),
+                    channel_indices)
                 pred = model(feat.float().to(device)).max(1).indices
                 tp += (pred == label).sum().item()
                 fp += (pred != label).sum().item()
@@ -375,7 +406,7 @@ def plot_ablation(results, output_dir):
 
 def print_summary(results, fh):
     """Print a formatted table to stdout and *fh*."""
-    hdr = (f"{'Experiment':<25} {'Ch':<5} {'SE':<6} {'1stBN':<6} {'Drop':<6} "
+    hdr = (f"{'Experiment':<25} {'Ch':<5} {'FWin':<6} {'SE':<6} {'1stBN':<6} {'Drop':<6} "
            f"{'Acc%':<8} {'Prec%':<8} {'Rec%':<8} {'F1%':<8} "
            f"{'InferT':<10} {'TrainT':<10}")
     sep = "-" * len(hdr)
@@ -383,6 +414,7 @@ def print_summary(results, fh):
         print(line); fh.write(line + "\n")
     for r in results:
         line = (f"{r['name']:<25} {len(r['channels']):<5} "
+                f"{r.get('feature_window_size', DEFAULT_FEATURE_WINDOW_SIZE):<6} "
                 f"{str(r['use_SEBlock']):<6} {str(r.get('use_first_bn', True)):<6} {r['dropout']:<6.1f} "
                 f"{r.get('accuracy','-'):<8} {r.get('precision','-'):<8} "
                 f"{r.get('recall','-'):<8} {r.get('f1_score','-'):<8} "
@@ -404,6 +436,7 @@ def run_experiment(exp, args, device):
 
     ch_idx = exp["channels"]
     n_ch = len(ch_idx)
+    feature_window_size = exp.get("feature_window_size", DEFAULT_FEATURE_WINDOW_SIZE)
 
     # Model
     model = CAFES([32, 64, 128, 256, 512], n_fc_neurons=2048, depth=29,
@@ -419,10 +452,14 @@ def run_experiment(exp, args, device):
 
     pos_train = ChannelSelectDataset(
         LazyTrainDataset(os.path.join(args.train_pos_data_folder, "train.npy"),
-                         data_type="pos", norm=exp["norm"]), ch_idx)
+                         data_type="pos", norm=exp["norm"],
+                         cut=args.cut, length=args.length,
+                         feature_window_size=feature_window_size), ch_idx)
     neg_train = ChannelSelectDataset(
         LazyTrainDataset(os.path.join(args.train_neg_data_folder, "train.npy"),
-                         data_type="neg", norm=exp["norm"]), ch_idx)
+                         data_type="neg", norm=exp["norm"],
+                         cut=args.cut, length=args.length,
+                         feature_window_size=feature_window_size), ch_idx)
 
     pos_val_raw = np.load(os.path.join(args.train_pos_data_folder, "valid.npy"),
                           allow_pickle=True)
@@ -431,11 +468,13 @@ def run_experiment(exp, args, device):
     pos_val = select_channels(add_features(
         valid_non_normalization(pos_val_raw, args.cut, args.length,
                                 False, 299, 10, 16),
-        norm=exp["norm"]), ch_idx)
+        norm=exp["norm"], s_len=args.length,
+        w_len=feature_window_size), ch_idx)
     neg_val = select_channels(add_features(
         valid_non_normalization(neg_val_raw, args.cut, args.length,
                                 False, 299, 10, 16),
-        norm=exp["norm"]), ch_idx)
+        norm=exp["norm"], s_len=args.length,
+        w_len=feature_window_size), ch_idx)
 
     pos_train_loader = DataLoader(pos_train, **dl_kw)
     neg_train_loader = DataLoader(neg_train, **dl_kw)
@@ -471,7 +510,9 @@ def run_experiment(exp, args, device):
     neg_test = np.load(os.path.join(args.test_neg_data_folder, "test.npy"),
                        allow_pickle=True)
     metrics = test_model(model, pos_test, neg_test, args.batch_size,
-                         args.cut, args.length, ch_idx, device, exp["norm"], log_fh=exp_log)
+                         args.cut, args.length, ch_idx, device, exp["norm"],
+                         feature_window_size=feature_window_size,
+                         log_fh=exp_log)
 
     exp.update(metrics)
     exp["train_time"] = round(train_s, 2)
@@ -501,6 +542,9 @@ if __name__ == "__main__":
                     help="Root output directory for all experiments")
     ap.add_argument("--cut", "-c", type=int, default=1500)
     ap.add_argument("--length", "-l", type=int, default=3000)
+    ap.add_argument("--window_sizes", "-ws", type=feature_window_size_type,
+                    nargs="+", default=[DEFAULT_FEATURE_WINDOW_SIZE],
+                    help="Feature embedding window sizes to evaluate, default 3")
     ap.add_argument("--batch_size", "-b", type=int, default=1024)
     ap.add_argument("--epochs", "-e", type=int, default=300)
     ap.add_argument("--learning_rate", "-lr", type=float, default=1e-3)
@@ -519,7 +563,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    experiments = get_experiments()
+    experiments = get_experiments(args.window_sizes)
     if args.experiments:
         experiments = [e for e in experiments
                        if e["name"] in args.experiments]
@@ -537,6 +581,7 @@ if __name__ == "__main__":
         print(f"  SEBlock  : {exp['use_SEBlock']}")
         print(f"  Dropout  : {exp['dropout']}")
         print(f"  Norm     : {exp['norm']}")
+        print(f"  FeatWin  : {exp['feature_window_size']}")
         print("=" * 60)
 
         exp = run_experiment(exp, args, device)
@@ -545,6 +590,7 @@ if __name__ == "__main__":
         # Incremental CSV save
         csv_path = os.path.join(args.output, "ablation_results.csv")
         fields = ["name", "group", "channel_desc", "channels",
+                  "feature_window_size",
                   "use_SEBlock", "use_first_bn", "dropout", "norm",
                   "accuracy", "precision", "recall", "f1_score",
                   "avg_infer_time", "train_time", "early_stop",
@@ -564,4 +610,3 @@ if __name__ == "__main__":
     plot_ablation(results, args.output)
     log.close()
     print(f"\nResults saved to {args.output}/")
-
