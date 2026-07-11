@@ -2,21 +2,9 @@
 
 Nanopore selective sequencing allows the targeted sequencing of DNA of interest using computational approaches rather than experimental methods such as targeted multiplex polymerase chain reaction or hybridization capture. Compared to sequence-alignment strategies, deep learning (DL) models for classifying target and non-target DNA provide large speed advantages. However, the relatively low accuracy of these DL-based tools hinders their application in nanopore selective sequencing. Here, we present a DL-based tool named **CAFES** for nanopore selective sequencing, which takes electric currents with multiple-features embedding as inputs. CAFES employs a modified very deep convolutional neural network (VDCNN) architecture, enabling significantly lower computational costs for training and quicker inference compared to conventional VDCNN. We evaluated the performance of CAFES across ten nanopore sequencing datasets spanning human, yeasts, bacteria, and viruses. 
 
+![CAFES Pipeline](figures/model_overview.png)
+
 ## Install
-
-### Dependencies
-
-```shell
-python=3.9
-pytorch=1.12.1
-scikit-learn=1.2.2
-matplotlib=3.7.1
-tqdm=4.65.0
-snakemake=7.32.4
-ont-fast5-api=4.1.1
-minimap2=2.17
-samtools=1.16.1
-```
 
 ### Install CAFES by Conda
 
@@ -28,6 +16,7 @@ samtools=1.16.1
 
 ```shell
 conda env create -f environment.yml
+conda activate CAFES-env
 ```
 
 
@@ -106,3 +95,9 @@ Perform data preprocessing on training and validation sets from the dataset fold
 ```shell
 python preprocessor.py -d {dataset_folder}
 ```
+
+## Acknowledgements
+
+Some code in this repository is adapted from:
+- [ReadCurrent](https://github.com/Ming-Ni-Group/ReadCurrent/)
+- [Campolina](https://github.com/lbcb-sci/Campolina)
