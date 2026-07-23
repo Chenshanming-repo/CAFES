@@ -88,7 +88,8 @@ Run ablation experiments, including optional feature embedding window-size sweep
 python ablation_study.py -trp example/zymo/ -trn example/human/ -tep example/zymo/ -ten example/human/ -o example/result/ablation --window_sizes 3 5 7
 ```
 
-- `--window_sizes`: one or more feature embedding window sizes for the ablation sweep, default `3`
+- `--window_sizes`: one or more feature embedding window sizes for the ablation sweep, default `3 5 7`
+- `--exp`: optional experiment name, group, or name prefix; for example, `--exp window_size` runs all window-size experiments
 
 ### get_ids.smk
 

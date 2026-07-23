@@ -1,10 +1,11 @@
 """
 Ablation Study for CAFES
 ========================
-Evaluates the contribution of three key components:
+Evaluates the contribution of four key components:
   1. Feature Channels  – raw, diff, w_mean, w_std, t_stat, z_score
   2. SEBlock            – Squeeze-and-Excitation attention
   3. Dropout            – regularisation rate
+  4. Feature Window     – rolling feature extraction window size
 
 Usage
 -----
@@ -12,7 +13,8 @@ Usage
       --train_pos_data_folder <train_pos_dir> --train_neg_data_folder <train_neg_dir> \
       --test_pos_data_folder <test_pos_dir> --test_neg_data_folder <test_neg_dir> \
       -o <output_dir> \
-      [--gpu_ids 0] [--experiments baseline_full feat_raw_only ...]
+      [--gpu_ids 0] [--window_sizes 3 5 7] \
+      [--experiments baseline_full feat_raw_only ...]
 
 Outputs
 -------
@@ -41,18 +43,30 @@ from sklearn.utils import shuffle
 
 from models.CAFES import CAFES
 from dataset import Dataset, LazyTrainDataset
-from preprocessor import add_features, valid_non_normalization, feature_window_size_type
+from preprocessor import (
+    add_features,
+    valid_non_normalization,
+    feature_window_size_type,
+    validate_feature_window_size,
+)
 
 # ── Constants ────────────────────────────────────────────────────────
 CHANNEL_NAMES = ["raw", "diff", "w_mean", "w_std", "t_stat", "z_score"]
 DEFAULT_FEATURE_WINDOW_SIZE = 3
+DEFAULT_WINDOW_SIZES = [DEFAULT_FEATURE_WINDOW_SIZE, 5, 7]
 
 
 def unique_window_sizes(window_sizes):
     if window_sizes is None:
-        return [DEFAULT_FEATURE_WINDOW_SIZE]
+        return list(DEFAULT_WINDOW_SIZES)
     unique = []
-    for w_len in window_sizes:
+    for value in window_sizes:
+        # argparse already converts CLI values to integers, but this helper is
+        # also part of the Python API and should reject invalid configurations
+        # before any expensive model/data setup begins.
+        w_len = (feature_window_size_type(value)
+                 if isinstance(value, str)
+                 else validate_feature_window_size(value))
         if w_len not in unique:
             unique.append(w_len)
     return unique
@@ -185,6 +199,27 @@ def get_experiments(window_sizes=None):
         ))
 
     return exps
+
+
+def select_experiments(experiments, selectors):
+    """Select experiments by exact name, group, or name prefix.
+
+    For example, ``window_size`` matches ``window_size_5`` and
+    ``window_size_7`` without requiring callers to enumerate every size.
+    """
+    selectors = tuple(selectors or ())
+    if not selectors:
+        return list(experiments)
+
+    return [
+        exp for exp in experiments
+        if any(
+            exp["name"] == selector
+            or exp.get("group") == selector
+            or exp["name"].startswith(f"{selector}_")
+            for selector in selectors
+        )
+    ]
 
 
 # ── Training loop ────────────────────────────────────────────────────
@@ -543,8 +578,9 @@ if __name__ == "__main__":
     ap.add_argument("--cut", "-c", type=int, default=1500)
     ap.add_argument("--length", "-l", type=int, default=3000)
     ap.add_argument("--window_sizes", "-ws", type=feature_window_size_type,
-                    nargs="+", default=[DEFAULT_FEATURE_WINDOW_SIZE],
-                    help="Feature embedding window sizes to evaluate, default 3")
+                    nargs="+", default=list(DEFAULT_WINDOW_SIZES),
+                    help=("Feature embedding window sizes to evaluate (one or "
+                          "more integers >= 2), default 3 5 7"))
     ap.add_argument("--batch_size", "-b", type=int, default=1024)
     ap.add_argument("--epochs", "-e", type=int, default=300)
     ap.add_argument("--learning_rate", "-lr", type=float, default=1e-3)
@@ -554,7 +590,8 @@ if __name__ == "__main__":
                     help="Visible CUDA devices, e.g. '0' or '0,1'")
     ap.add_argument("--experiments", "-exp", type=str, nargs="+",
                     default=None,
-                    help="Run only these experiments (by name)")
+                    help=("Run only these experiments by name, group, or "
+                          "name prefix (e.g. --exp window_size)"))
     args = ap.parse_args()
 
     os.makedirs(args.output, exist_ok=True)
@@ -565,8 +602,7 @@ if __name__ == "__main__":
 
     experiments = get_experiments(args.window_sizes)
     if args.experiments:
-        experiments = [e for e in experiments
-                       if e["name"] in args.experiments]
+        experiments = select_experiments(experiments, args.experiments)
         print(f"Running {len(experiments)} selected experiment(s)")
     else:
         print(f"Running all {len(experiments)} experiments")
