@@ -13,7 +13,7 @@ from dataset import Dataset, LazyTrainDataset
 
 from models.CAFES import CAFES
 from preprocessor import train_normalization, valid_normalization, add_features, train_non_normalization, \
-    valid_non_normalization
+    valid_non_normalization, feature_window_size_type
 #from tester import test, test_non_normalization_add_features, test_normalization_add_features
 from tester import test
 # from models.ReadCurrent import ReadCurrent
@@ -190,6 +190,7 @@ if __name__ == '__main__':
     parser.add_argument("--cut", '-c', type=int, default=1500, help="Electrical signal length to be cut, default 1500")
     parser.add_argument("--tiling_fold", '-tf', type=int, default=3, help="Number of tiles, default 3")
     parser.add_argument("--length", '-l', type=int, default=3000, help="The length of the sliding window, default 3000")
+    parser.add_argument("--feature_window_size", '-fws', type=feature_window_size_type, default=3, help="Window size for feature embedding rolling mean/std and t-stat, default 3")
     parser.add_argument("--patches", '-patches', action='store_true', help="Convert electrical signals into patches, default False")
     parser.add_argument("--seq_length", '-sl', type=int, default=299, help="Sequence length after patch, default 299")
     parser.add_argument("--stride", '-s', type=int, default=10, help="Patch step size, default 10")
@@ -256,11 +257,21 @@ if __name__ == '__main__':
     valid_process_method = valid_non_normalization
     train_process_method = train_non_normalization
 
-    pos_valid_data = add_features(valid_process_method(pos_valid_data, args.cut, args.length,
-                                   args.patches, args.seq_length, args.stride, args.patch_size), norm=args.norm)
+    pos_valid_data = add_features(
+        valid_process_method(pos_valid_data, args.cut, args.length,
+                             args.patches, args.seq_length, args.stride, args.patch_size),
+        norm=args.norm,
+        s_len=args.length,
+        w_len=args.feature_window_size,
+    )
     myprint(f"The shape of the positive validation set after preprocessing: {pos_valid_data.shape}", log)
-    neg_valid_data = add_features(valid_process_method(neg_valid_data, args.cut, args.length,
-                                   args.patches, args.seq_length, args.stride, args.patch_size), norm=args.norm)
+    neg_valid_data = add_features(
+        valid_process_method(neg_valid_data, args.cut, args.length,
+                             args.patches, args.seq_length, args.stride, args.patch_size),
+        norm=args.norm,
+        s_len=args.length,
+        w_len=args.feature_window_size,
+    )
     myprint(f"The shape of the negative validation set after preprocessing: {neg_valid_data.shape}", log)
     myprint("Preprocessing finished!", log)
 
@@ -273,10 +284,26 @@ if __name__ == '__main__':
 
     # Load files and create Dataset
     #pos_train_set = Dataset(pos_train_data, 'pos')
-    pos_train_set = LazyTrainDataset(os.path.join(args.pos_data_folder, 'train.npy'), data_type='pos', norm=args.norm)
+    pos_train_set = LazyTrainDataset(
+        os.path.join(args.pos_data_folder, 'train.npy'),
+        data_type='pos',
+        norm=args.norm,
+        cut=args.cut,
+        length=args.length,
+        tile=args.tiling_fold,
+        feature_window_size=args.feature_window_size,
+    )
     pos_train_generator = DataLoader(pos_train_set, **params)
     #neg_train_set = Dataset(neg_train_data, 'neg')
-    neg_train_set = LazyTrainDataset(os.path.join(args.neg_data_folder, 'train.npy'), data_type='neg', norm=args.norm)
+    neg_train_set = LazyTrainDataset(
+        os.path.join(args.neg_data_folder, 'train.npy'),
+        data_type='neg',
+        norm=args.norm,
+        cut=args.cut,
+        length=args.length,
+        tile=args.tiling_fold,
+        feature_window_size=args.feature_window_size,
+    )
     neg_train_generator = DataLoader(neg_train_set, **params)
 
     pos_valid_set = Dataset(pos_valid_data, 'pos')
@@ -310,9 +337,11 @@ if __name__ == '__main__':
     test_method = test
     model.load_state_dict(torch.load(os.path.join(args.output, "model.pth")))
     tp, fn, pos_infer_time = test_method(model, pos_test_data, 1, args.batch_size, args.cut, args.length,
-              args.patches, args.seq_length, args.stride, args.patch_size, log, device, args.norm)
+              args.patches, args.seq_length, args.stride, args.patch_size, log, device, args.norm,
+              args.feature_window_size)
     tn, fp, neg_infer_time = test_method(model, neg_test_data, 0, args.batch_size, args.cut, args.length,
-              args.patches, args.seq_length, args.stride, args.patch_size, log, device, args.norm)
+              args.patches, args.seq_length, args.stride, args.patch_size, log, device, args.norm,
+              args.feature_window_size)
 
     # Calculate evaluation index values
     accuracy = round((tp + tn) * 100 / (tp + tn + fp + fn), 2)

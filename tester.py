@@ -9,7 +9,7 @@ from models.CAFES import CAFES
 # from models.CNN_LSTM import CNN_LSTM
 # from models.Transformer import Transformer
 # from models.CNN_Transformer import CNN_Transformer
-from preprocessor import add_features, modified_zscore
+from preprocessor import add_features, modified_zscore, feature_window_size_type
 
 
 
@@ -38,7 +38,8 @@ def inference(inputs, model, label, device):
     return true_pred, false_pred
 
 def test(model, reads, label, batch_size, cut, length,
-              patches, seq_length, stride, patch_size, log, device, norm):
+              patches, seq_length, stride, patch_size, log, device, norm,
+              feature_window_size=3):
     model.to(device)
     model.eval()
     with torch.no_grad():
@@ -60,7 +61,12 @@ def test(model, reads, label, batch_size, cut, length,
 
             if accepted_reads % batch_size == 0 and accepted_reads != 0:
                 batch_count += 1
-                inputs = add_features(inputs, norm=norm)
+                inputs = add_features(
+                    inputs,
+                    norm=norm,
+                    s_len=length,
+                    w_len=feature_window_size,
+                )
                 t, f = inference(inputs, model, label, device)
                 true_pred += t
                 false_pred += f
@@ -68,7 +74,12 @@ def test(model, reads, label, batch_size, cut, length,
 
         if len(inputs) > 0:
             batch_count += 1
-            inputs = add_features(inputs, norm=norm)
+            inputs = add_features(
+                inputs,
+                norm=norm,
+                s_len=length,
+                w_len=feature_window_size,
+            )
             t, f = inference(inputs, model, label, device)
             true_pred += t
             false_pred += f
@@ -94,6 +105,7 @@ if __name__ == '__main__':
     parser.add_argument("--batch_size", '-b', type=int, default=512, help="Batch size, default 512")
     parser.add_argument("--cut", '-c', type=int, default=1500, help="Electrical signal length to be cut, default 1500")
     parser.add_argument("--length", '-len', type=int, default=3000, help="The length of each signal segment, default 3000")
+    parser.add_argument("--feature_window_size", '-fws', type=feature_window_size_type, default=3, help="Window size for feature embedding rolling mean/std and t-stat, default 3")
     parser.add_argument("--patches", '-patches', action='store_true', help="Convert electrical signals into patches, default False")
     parser.add_argument("--seq_length", '-sl', type=int, default=299, help="Sequence length after patch, default 299")
     parser.add_argument("--stride", '-s', type=int, default=10, help="Patch step size, default 10")
@@ -140,12 +152,14 @@ if __name__ == '__main__':
     reads = np.load(os.path.join(args.pos_data_folder, "test.npy"), allow_pickle=True)
     myprint(f"Load positive test data from {os.path.join(args.pos_data_folder, 'test.npy')}, shape: {reads.shape}", log)
     tp, fn, pos_infer_time = test(model, reads, 1, args.batch_size, args.cut, args.length,
-        args.patches, args.seq_length, args.stride, args.patch_size, log, device, args.norm)
+        args.patches, args.seq_length, args.stride, args.patch_size, log, device, args.norm,
+        args.feature_window_size)
 
     reads = np.load(os.path.join(args.neg_data_folder, "test.npy"), allow_pickle=True)
     myprint(f"Load negative test data from {os.path.join(args.neg_data_folder, 'test.npy')}, shape: {reads.shape}", log)
     tn, fp, neg_infer_time = test(model, reads, 0, args.batch_size, args.cut, args.length,
-        args.patches, args.seq_length, args.stride, args.patch_size, log, device, args.norm)
+        args.patches, args.seq_length, args.stride, args.patch_size, log, device, args.norm,
+        args.feature_window_size)
 
     # Calculate evaluation index values
     accuracy = round((tp + tn) * 100 / (tp + tn + fp + fn), 2)

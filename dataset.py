@@ -25,7 +25,7 @@ class Dataset(torch.utils.data.Dataset):
 
 class LazyTrainDataset(torch.utils.data.Dataset):
     def __init__(self, npy_path, data_type='pos', norm=False,
-                 cut=1500, length=3000, tile=3):
+                 cut=1500, length=3000, tile=3, feature_window_size=3):
 
         self.npy_file = npy_path
         self.data = np.load(self.npy_file, allow_pickle=True)
@@ -34,6 +34,7 @@ class LazyTrainDataset(torch.utils.data.Dataset):
         self.param_cut = cut
         self.param_length = length
         self.param_tile = tile
+        self.feature_window_size = feature_window_size
 
         self.index_map = []  # save (read_idx, tile_idx, segment_start)
         step = length // tile
@@ -65,7 +66,12 @@ class LazyTrainDataset(torch.utils.data.Dataset):
         
         # segment = modified_zscore(signal[start_pos:start_pos + self.param_length]) if self.norm else signal[start_pos:start_pos + self.param_length]
         segment = signal[start_pos:start_pos + self.param_length]
-        X = add_features(np.array([segment]), norm = self.norm)[0].float()
+        X = add_features(
+            np.array([segment]),
+            norm=self.norm,
+            s_len=self.param_length,
+            w_len=self.feature_window_size,
+        )[0].float()
         Y = self.label[index]
         # print(X.shape, Y.shape)
         return X, Y

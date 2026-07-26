@@ -4,6 +4,33 @@ import numpy as np
 import torch
 from numpy.lib.stride_tricks import sliding_window_view
 
+
+def validate_feature_window_size(w_len):
+    try:
+        parsed = int(w_len)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("feature window size must be an integer") from exc
+    if parsed != w_len:
+        raise ValueError("feature window size must be an integer")
+    if parsed < 2:
+        raise ValueError("feature window size must be at least 2")
+    return parsed
+
+
+def feature_window_size_type(value):
+    try:
+        w_len = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "feature window size must be an integer"
+        ) from exc
+    if w_len < 2:
+        raise argparse.ArgumentTypeError(
+            "feature window size must be at least 2"
+        )
+    return w_len
+
+
 def z_norm(signal, consistency_correction=1.4826, eps=1e-6):
     median = np.median(signal)
     mad = np.median(np.abs(signal - median))
@@ -176,13 +203,16 @@ def diff1(sig):
     return torch.tensor(diffs)
 
 def window_mean_std(sig, w_len):
+    w_len = validate_feature_window_size(w_len)
     sig = sliding_window_view(sig, window_shape=w_len, axis=1)
     w_means = np.mean(sig, axis=2)
     w_stds = np.std(sig, axis=2)
 
-    zero_array = np.expand_dims(np.array([0] * sig.shape[0]), axis=1)
-    w_means = np.concatenate((zero_array, np.concatenate((w_means, zero_array), axis=1)), axis=1)
-    w_stds = np.concatenate((zero_array, np.concatenate((w_stds, zero_array), axis=1)), axis=1)
+    pad_total = w_len - 1
+    pad_left = pad_total // 2
+    pad_right = pad_total - pad_left
+    w_means = np.pad(w_means, ((0, 0), (pad_left, pad_right)))
+    w_stds = np.pad(w_stds, ((0, 0), (pad_left, pad_right)))
 
     return torch.tensor(w_means), torch.tensor(w_stds)
 
@@ -210,6 +240,7 @@ def add_features(signals, norm=True, s_len=3000, w_len=3):
     signals: (N, L) numpy array
     return:  (N, 6, L) torch tensor
     """
+    w_len = validate_feature_window_size(w_len)
     signal_arr = torch.as_tensor(signals, dtype=torch.float32)  # (N, L)
     N, L = signal_arr.shape
 
