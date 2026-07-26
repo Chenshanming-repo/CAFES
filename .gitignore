@@ -1,4 +1,10 @@
-script/
+script/*
+!script/ND/
+!script/DSN/
+script/ND/*
+script/DSN/*
+!script/ND/*_npy.py
+!script/DSN/*_npy.py
 example/result/zymo_human/model.pth
 __pycache__/
 .idea/
