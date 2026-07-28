@@ -1,6 +1,6 @@
-# CAFES: A VDCNN-based tool for fast and accurate nanopore selective sequencing
+# CAFES: Enhanced Nanopore Selective Sequencing via Multi-dimensional Feature Embedding
 
-Nanopore selective sequencing allows the targeted sequencing of DNA of interest using computational approaches rather than experimental methods such as targeted multiplex polymerase chain reaction or hybridization capture. Compared to sequence-alignment strategies, deep learning (DL) models for classifying target and non-target DNA provide large speed advantages. However, the relatively low accuracy of these DL-based tools hinders their application in nanopore selective sequencing. Here, we present a DL-based tool named **CAFES** for nanopore selective sequencing, which takes electric currents with multiple-features embedding as inputs. CAFES employs a modified very deep convolutional neural network (VDCNN) architecture, enabling significantly lower computational costs for training and quicker inference compared to conventional VDCNN. We evaluated the performance of CAFES across ten nanopore sequencing datasets spanning human, yeasts, bacteria, and viruses. 
+Nanopore selective sequencing enables computational enrichment or depletion of DNA/RNA molecules during sequencing. **CAFES** classifies nanopore current signals using a six-channel representation that combines the raw current, an ordinary per-segment Z-score, moving mean, moving standard deviation, first-order differential, and adjacent-window T-statistics. These features are processed by a modified 29-layer very deep convolutional neural network (VDCNN) with Squeeze-and-Excitation Blocks and dropout within its residual convolutional blocks. CAFES was evaluated on 15 Oxford Nanopore Technologies datasets spanning human, yeast, bacterial, and viral samples, including cross-species, cross-sample, cross-batch, and cross-speed settings.
 
 ![CAFES Pipeline](figures/model_overview.png)
 
@@ -56,7 +56,7 @@ Train the model on the specified dataset.
 **Updated Defaults:**
 - `--dropout`: 0.2
 - `--SEBlock`: Enabled by default (use `--no-SEBlock` to disable)
-- `--norm`: Enabled by default (use `--no-norm` to disable)
+- `--norm`: Enables the ordinary per-segment Z-score feature channel by default (use `--no-norm` to disable)
 - `--feature_window_size`: 3, controls rolling mean/std and t-stat feature embedding window size
 
 ```shell
@@ -72,7 +72,7 @@ Test the model on the specified dataset.
 **Updated Defaults:**
 - `--dropout`: 0.2
 - `--SEBlock`: Enabled by default (use `--no-SEBlock` to disable)
-- `--norm`: Enabled by default (use `--no-norm` to disable)
+- `--norm`: Enables the ordinary per-segment Z-score feature channel by default (use `--no-norm` to disable)
 - `--feature_window_size`: 3, controls rolling mean/std and t-stat feature embedding window size
 
 ```shell
@@ -119,4 +119,4 @@ python preprocessor.py -d {dataset_folder}
 
 Some code in this repository is adapted from:
 - [ReadCurrent](https://github.com/Ming-Ni-Group/ReadCurrent/)
-- [Campolina](https://github.com/lbcb-sci/Campolina)
+- [Campolina](https://doi.org/10.1186/s13059-026-03950-1)

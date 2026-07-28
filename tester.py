@@ -115,8 +115,8 @@ if __name__ == '__main__':
     parser.add_argument("--dropout", '-d', type=float, default=0.2, help="Dropout rate, default 0.2")
     parser.add_argument("--SEBlock", action="store_true", help="Using SEBlock in VDCNN")
     parser.add_argument("--no-SEBlock", dest="SEBlock", action="store_false", help="Disable SEBlock")
-    parser.add_argument("--norm", action="store_true", help="Using MAD normalized in VDCNN")
-    parser.add_argument("--no-norm", dest="norm", action="store_false", help="Disable MAD normalization")
+    parser.add_argument("--norm", action="store_true", help="Use the ordinary per-segment Z-score feature channel")
+    parser.add_argument("--no-norm", dest="norm", action="store_false", help="Disable the Z-score feature channel")
     parser.set_defaults(SEBlock=True, norm=True)
     args = parser.parse_args()
     
