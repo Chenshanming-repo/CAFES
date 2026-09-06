@@ -107,6 +107,8 @@ Constructing training, validation, and testing sets from the fast5 files of nano
 python tools/read_fast5.py -dir {fast5_dir} -o {output_path} -ids {read_ids_path}
 ```
 
+Use `--test_count 3` to sample three non-overlapping test datasets (`test_1.npy`, `test_2.npy`, and `test_3.npy`), each containing `--test_size` signals. The default is `--test_count 1`, which saves a single `test.npy`. Training, validation, and test sets are mutually disjoint.
+
 ### preprocessor.py (optional)
 
 Perform data preprocessing on training and validation sets from the dataset folder.

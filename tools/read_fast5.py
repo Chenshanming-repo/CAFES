@@ -48,13 +48,18 @@ def save_reads(reads, output):
 	np.random.shuffle(reads)
 	train_data = reads[:args.train_size]
 	valid_data = reads[args.train_size:args.train_size + args.valid_size]
-	test_data = reads[args.train_size + args.valid_size:]
 	np.save(os.path.join(output, 'train.npy'), train_data)
 	print(f"train data saved to {os.path.join(output, 'train.npy')}, shape: {train_data.shape}")
 	np.save(os.path.join(output, 'valid.npy'), valid_data)
 	print(f"valid data saved to {os.path.join(output, 'valid.npy')}, shape: {valid_data.shape}")
-	np.save(os.path.join(output, 'test.npy'), test_data)
-	print(f"test data saved to {os.path.join(output, 'test.npy')}, shape: {test_data.shape}")
+	test_start = args.train_size + args.valid_size
+	for test_index in range(args.test_count):
+		start = test_start + test_index * args.test_size
+		test_data = reads[start:start + args.test_size]
+		filename = 'test.npy' if args.test_count == 1 else f'test_{test_index + 1}.npy'
+		test_path = os.path.join(output, filename)
+		np.save(test_path, test_data)
+		print(f"test data saved to {test_path}, shape: {test_data.shape}")
 	exit(0)
 
 
@@ -67,8 +72,11 @@ if __name__ == '__main__':
 	parser.add_argument("--min_length", '-len', type=int, default=4500, help="Minimum length of each electrical signal, default 4500")
 	parser.add_argument("--train_size", '-train', type=int, default=20000, help="Number of electrical signals to be read for training, default 20000")
 	parser.add_argument("--valid_size", '-valid', type=int, default=10000, help="Number of electrical signals to be read for validation, default 10000")
-	parser.add_argument("--test_size", '-test', type=int, default=10000, help="Number of electrical signals to be read for testing, default 10000")
+	parser.add_argument("--test_size", '-test', type=int, default=10000, help="Number of electrical signals in each test dataset, default 10000")
+	parser.add_argument("--test_count", type=int, default=1, help="Number of non-overlapping test datasets to sample, default 1")
 	args = parser.parse_args()
+	if args.test_count < 1:
+		parser.error("--test_count must be at least 1")
 
 	# Print parameter information
 	for arg in vars(args):
@@ -82,6 +90,6 @@ if __name__ == '__main__':
 		ids_file = open(args.read_ids, 'r')
 		ids = [id.strip() for id in ids_file.readlines()]
 
-	total_size = args.train_size + args.valid_size + args.test_size
+	total_size = args.train_size + args.valid_size + args.test_size * args.test_count
 	signals = read_fast5(args.file_dir, args.min_length, total_size, ids)
 	save_reads(signals, args.output)
