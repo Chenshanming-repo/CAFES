@@ -39,7 +39,7 @@ def inference(inputs, model, label, device):
 
 def test(model, reads, label, batch_size, cut, length,
               patches, seq_length, stride, patch_size, log, device, norm,
-              feature_window_size=3):
+              feature_window_size=3, mad_norm=True):
     model.to(device)
     model.eval()
     with torch.no_grad():
@@ -66,6 +66,7 @@ def test(model, reads, label, batch_size, cut, length,
                     norm=norm,
                     s_len=length,
                     w_len=feature_window_size,
+                    mad_norm=mad_norm,
                 )
                 t, f = inference(inputs, model, label, device)
                 true_pred += t
@@ -79,6 +80,7 @@ def test(model, reads, label, batch_size, cut, length,
                 norm=norm,
                 s_len=length,
                 w_len=feature_window_size,
+                mad_norm=mad_norm,
             )
             t, f = inference(inputs, model, label, device)
             true_pred += t
@@ -117,7 +119,9 @@ if __name__ == '__main__':
     parser.add_argument("--no-SEBlock", dest="SEBlock", action="store_false", help="Disable SEBlock")
     parser.add_argument("--norm", action="store_true", help="Use the ordinary per-segment Z-score feature channel")
     parser.add_argument("--no-norm", dest="norm", action="store_false", help="Disable the Z-score feature channel")
-    parser.set_defaults(SEBlock=True, norm=True)
+    parser.add_argument("--mad_norm", action="store_true", help="Apply ReadCurrent MAD normalization before feature generation")
+    parser.add_argument("--no-mad_norm", dest="mad_norm", action="store_false", help="Disable MAD normalization before feature generation")
+    parser.set_defaults(SEBlock=True, norm=True, mad_norm=True)
     args = parser.parse_args()
     
     # Create output folder
@@ -153,13 +157,13 @@ if __name__ == '__main__':
     myprint(f"Load positive test data from {os.path.join(args.pos_data_folder, 'test.npy')}, shape: {reads.shape}", log)
     tp, fn, pos_infer_time = test(model, reads, 1, args.batch_size, args.cut, args.length,
         args.patches, args.seq_length, args.stride, args.patch_size, log, device, args.norm,
-        args.feature_window_size)
+        args.feature_window_size, args.mad_norm)
 
     reads = np.load(os.path.join(args.neg_data_folder, "test.npy"), allow_pickle=True)
     myprint(f"Load negative test data from {os.path.join(args.neg_data_folder, 'test.npy')}, shape: {reads.shape}", log)
     tn, fp, neg_infer_time = test(model, reads, 0, args.batch_size, args.cut, args.length,
         args.patches, args.seq_length, args.stride, args.patch_size, log, device, args.norm,
-        args.feature_window_size)
+        args.feature_window_size, args.mad_norm)
 
     # Calculate evaluation index values
     accuracy = round((tp + tn) * 100 / (tp + tn + fp + fn), 2)

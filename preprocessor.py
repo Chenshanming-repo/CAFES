@@ -36,6 +36,23 @@ def z_norm(signal, consistency_correction=1.4826, eps=1e-6):
     mad = np.median(np.abs(signal - median))
     return (signal - median) / (consistency_correction * mad + eps)
 
+def mad_normalize(signal, mad_threshold=3.5, consistency_correction=1.4826, eps=1e-6):
+    """ReadCurrent-style MAD normalization: median/MAD scaling with outlier smoothing."""
+    median = np.median(signal)
+    dev_from_med = np.asarray(signal, dtype=np.float64) - median
+    mad = np.median(np.abs(dev_from_med))
+    mad_score = dev_from_med / (consistency_correction * mad + eps)
+
+    x = np.where(np.abs(mad_score) > mad_threshold)[0]
+    for i in x:
+        if i == 0:
+            mad_score[i] = mad_score[i + 1]
+        elif i == len(mad_score) - 1:
+            mad_score[i] = mad_score[i - 1]
+        else:
+            mad_score[i] = (mad_score[i - 1] + mad_score[i + 1]) / 2
+    return mad_score.astype(np.float32)
+
 def modified_zscore(signal):
     from scipy import stats
     z = stats.zscore(signal)
@@ -167,7 +184,7 @@ def comp_t_stat(cum_sum_sig, cum_sum_sig_square, s_len, w_len):
 
     # Ensure conditions are met
     if s_len < 2 * w_len or w_len < 2:
-        return t_stat
+        return torch.tensor(t_stat)
 
     # Compute cumulative sums for each window in a vectorized manner
     sum1 = cum_sum_sig[:, w_len:s_len - w_len + 1] - cum_sum_sig[:, :s_len - 2 * w_len + 1]
@@ -228,8 +245,11 @@ def window_mean_std(sig, w_len):
         # (5, 3000)
 
 #    return signals_res
-def add_features(signals, norm=True, s_len=3000, w_len=3):
+def add_features(signals, norm=True, s_len=3000, w_len=3, mad_norm=True):
     """
+    If mad_norm is True, each signal is first MAD-normalized (ReadCurrent style)
+    and all six channels are computed from the normalized signal.
+
     channel 0: raw current
     channel 1: diff
     channel 2: window mean
@@ -241,6 +261,8 @@ def add_features(signals, norm=True, s_len=3000, w_len=3):
     return:  (N, 6, L) torch tensor
     """
     w_len = validate_feature_window_size(w_len)
+    if mad_norm:
+        signals = np.stack([mad_normalize(np.asarray(sig)) for sig in signals])
     signal_arr = torch.as_tensor(signals, dtype=torch.float32)  # (N, L)
     N, L = signal_arr.shape
 

@@ -208,7 +208,9 @@ if __name__ == '__main__':
     parser.add_argument("--no-SEBlock", dest="SEBlock", action="store_false", help="Disable SEBlock")
     parser.add_argument("--norm", action="store_true", help="Use the ordinary per-segment Z-score feature channel")
     parser.add_argument("--no-norm", dest="norm", action="store_false", help="Disable the Z-score feature channel")
-    parser.set_defaults(SEBlock=True, norm=True)
+    parser.add_argument("--mad_norm", action="store_true", help="Apply ReadCurrent MAD normalization before feature generation")
+    parser.add_argument("--no-mad_norm", dest="mad_norm", action="store_false", help="Disable MAD normalization before feature generation")
+    parser.set_defaults(SEBlock=True, norm=True, mad_norm=True)
     args = parser.parse_args()
 
     # Create output folder
@@ -263,6 +265,7 @@ if __name__ == '__main__':
         norm=args.norm,
         s_len=args.length,
         w_len=args.feature_window_size,
+        mad_norm=args.mad_norm,
     )
     myprint(f"The shape of the positive validation set after preprocessing: {pos_valid_data.shape}", log)
     neg_valid_data = add_features(
@@ -271,6 +274,7 @@ if __name__ == '__main__':
         norm=args.norm,
         s_len=args.length,
         w_len=args.feature_window_size,
+        mad_norm=args.mad_norm,
     )
     myprint(f"The shape of the negative validation set after preprocessing: {neg_valid_data.shape}", log)
     myprint("Preprocessing finished!", log)
@@ -292,6 +296,7 @@ if __name__ == '__main__':
         length=args.length,
         tile=args.tiling_fold,
         feature_window_size=args.feature_window_size,
+        mad_norm=args.mad_norm,
     )
     pos_train_generator = DataLoader(pos_train_set, **params)
     #neg_train_set = Dataset(neg_train_data, 'neg')
@@ -303,6 +308,7 @@ if __name__ == '__main__':
         length=args.length,
         tile=args.tiling_fold,
         feature_window_size=args.feature_window_size,
+        mad_norm=args.mad_norm,
     )
     neg_train_generator = DataLoader(neg_train_set, **params)
 
@@ -338,10 +344,10 @@ if __name__ == '__main__':
     model.load_state_dict(torch.load(os.path.join(args.output, "model.pth")))
     tp, fn, pos_infer_time = test_method(model, pos_test_data, 1, args.batch_size, args.cut, args.length,
               args.patches, args.seq_length, args.stride, args.patch_size, log, device, args.norm,
-              args.feature_window_size)
+              args.feature_window_size, args.mad_norm)
     tn, fp, neg_infer_time = test_method(model, neg_test_data, 0, args.batch_size, args.cut, args.length,
               args.patches, args.seq_length, args.stride, args.patch_size, log, device, args.norm,
-              args.feature_window_size)
+              args.feature_window_size, args.mad_norm)
 
     # Calculate evaluation index values
     accuracy = round((tp + tn) * 100 / (tp + tn + fp + fn), 2)

@@ -7,17 +7,17 @@ import torch
 import dataset as dataset_module
 from ablation_study import get_experiments
 from dataset import LazyTrainDataset
-from preprocessor import add_features, feature_window_size_type
+from preprocessor import add_features, feature_window_size_type, mad_normalize
 
 
 def test_add_features_preserves_length_with_non_default_window():
     signals = np.array([[1, 2, 3, 4, 5, 6]], dtype=np.float32)
 
-    features = add_features(signals, norm=False, s_len=6, w_len=5)
+    features = add_features(signals, norm=False, s_len=6, w_len=5, mad_norm=False)
 
     assert features.shape == (1, 6, 6)
     assert torch.allclose(
-        features[0, 2],
+        features[0, 2].float(),
         torch.tensor([0.0, 0.0, 3.0, 4.0, 0.0, 0.0]),
     )
 
@@ -25,8 +25,8 @@ def test_add_features_preserves_length_with_non_default_window():
 def test_add_features_changes_rolling_channels_when_window_changes():
     signals = np.array([[1, 2, 3, 4, 5, 6]], dtype=np.float32)
 
-    features_3 = add_features(signals, norm=False, s_len=6, w_len=3)
-    features_5 = add_features(signals, norm=False, s_len=6, w_len=5)
+    features_3 = add_features(signals, norm=False, s_len=6, w_len=3, mad_norm=False)
+    features_5 = add_features(signals, norm=False, s_len=6, w_len=5, mad_norm=False)
 
     assert not torch.allclose(features_3[:, 2:4, :], features_5[:, 2:4, :])
 
@@ -41,11 +41,12 @@ def test_lazy_train_dataset_passes_feature_window_size(tmp_path, monkeypatch):
     np.save(npy_path, np.array([np.arange(8, dtype=np.float32)], dtype=object))
     captured = {}
 
-    def fake_add_features(signals, norm=True, s_len=3000, w_len=3):
+    def fake_add_features(signals, norm=True, s_len=3000, w_len=3, mad_norm=True):
         captured["signals"] = signals
         captured["norm"] = norm
         captured["s_len"] = s_len
         captured["w_len"] = w_len
+        captured["mad_norm"] = mad_norm
         return torch.zeros((1, 6, len(signals[0])), dtype=torch.float32)
 
     monkeypatch.setattr(dataset_module, "add_features", fake_add_features)
@@ -67,6 +68,7 @@ def test_lazy_train_dataset_passes_feature_window_size(tmp_path, monkeypatch):
     assert captured["norm"] is True
     assert captured["s_len"] == 6
     assert captured["w_len"] == 5
+    assert captured["mad_norm"] is True
 
 
 def test_get_experiments_adds_window_size_sweep_without_duplicating_baseline():
@@ -79,3 +81,15 @@ def test_get_experiments_adds_window_size_sweep_without_duplicating_baseline():
     assert by_name["window_size_5"]["feature_window_size"] == 5
     assert by_name["window_size_5"]["channels"] == [0, 1, 2, 3, 4, 5]
     assert by_name["window_size_7"]["feature_window_size"] == 7
+
+
+def test_add_features_applies_mad_normalization_before_features():
+    signals = np.array([[100, 102, 98, 101, 99, 100, 500, 100]], dtype=np.float32)
+
+    features = add_features(signals, norm=False, s_len=8, w_len=3)
+    expected = mad_normalize(signals[0])
+
+    assert torch.allclose(features[0, 0].float(), torch.from_numpy(expected))
+    assert torch.allclose(features[0, 1].float(), torch.from_numpy(np.diff(expected, prepend=0)).float())
+    # outlier (500) is smoothed by neighbour averaging, as in ReadCurrent
+    assert abs(expected[6]) <= 3.5
